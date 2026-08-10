@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@noble/secp256k1@1.7.0/index.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     /* ─── Theme & Glass ──────────────────────────────────────────────── */
@@ -765,14 +766,26 @@ async function deriveWalletFromSeed(seed, username) {
   const address = 'MCR_' + Array.from(new Uint8Array(pubHash)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32).toUpperCase();
   return { address, privateKey };
 }
+function getPublicKeyHex(privateKeyHex) {
+    const privateKey = new Uint8Array(privateKeyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
+    const pubKey = secp256k1.getPublicKey(privateKey, false); // uncompressed
+    return Array.from(pubKey).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
-function signMessage(privateKey, message) {
-  let h = 5381;
-  const msg = privateKey + message;
-  for (let i = 0; i < msg.length; i++) {
-    h = ((h << 5) + h) + msg.charCodeAt(i);
-  }
-  return (h & 0xFFFFFFFF).toString(16).padStart(8, '0');
+
+// ─── ECDSA signing (secp256k1) ───────────────────────────────────
+async function signMessage(privateKeyHex, message) {
+    // Convert private key hex to Uint8Array
+    const privateKey = new Uint8Array(privateKeyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
+    // Hash the message with SHA-256
+    const msgBytes = new TextEncoder().encode(message);
+    const msgHash = await crypto.subtle.digest('SHA-256', msgBytes);
+    // Sign the hash (hashed: true)
+    const signature = secp256k1.signSync(new Uint8Array(msgHash), privateKey, { hashed: true });
+    // Extract r and s as 32-byte hex strings (big-endian)
+    const rHex = signature.r.toString(16).padStart(64, '0');
+    const sHex = signature.s.toString(16).padStart(64, '0');
+    return rHex + sHex;
 }
 
 async function encryptSeed(seed, password) {
