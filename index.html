@@ -907,24 +907,39 @@ function setupWebSocket(ws) {
 
 let autoRefreshInterval1 = null;
 let autoRefreshInterval2 = null;
-
 function onOpenHandler() {
-  state.connected = true;
-  state.reconnectAttempts = 0;
-  updateConnectionStatus(true);
-  toast('Connected to node');
-  // Registration is optional – we keep it for completeness (uses ECDSA)
-  registerMiner();
-  requestData();
-  startHeartbeat();
-  if (autoRefreshInterval1) clearInterval(autoRefreshInterval1);
-  if (autoRefreshInterval2) clearInterval(autoRefreshInterval2);
-  autoRefreshInterval1 = setInterval(() => {
-    if (state.connected) sendWebSocket({ type: 'get_status' });
-  }, 5000);
-  autoRefreshInterval2 = setInterval(() => {
-    if (state.connected) requestData();
-  }, 30000);
+  try {
+    console.log('✅ WebSocket opened, setting connected...');
+    state.connected = true;
+    state.reconnectAttempts = 0;
+    updateConnectionStatus(true);
+    toast('Connected to node');
+
+    // Register (optional – if it fails, we still stay connected)
+    try {
+      registerMiner();
+    } catch (regErr) {
+      console.warn('Registration failed (ignored):', regErr);
+    }
+
+    requestData();
+    startHeartbeat();
+
+    if (autoRefreshInterval1) clearInterval(autoRefreshInterval1);
+    if (autoRefreshInterval2) clearInterval(autoRefreshInterval2);
+    autoRefreshInterval1 = setInterval(() => {
+      if (state.connected) sendWebSocket({ type: 'get_status' });
+    }, 5000);
+    autoRefreshInterval2 = setInterval(() => {
+      if (state.connected) requestData();
+    }, 30000);
+
+  } catch (err) {
+    console.error('onOpenHandler error:', err);
+    // Still mark as connected (we can operate read‑only)
+    state.connected = true;
+    updateConnectionStatus(true);
+  }
 }
 
 async function connectToNode() {
